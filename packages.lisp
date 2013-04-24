@@ -10,4 +10,5 @@
   (:shadow #:open #:close #:get #:delete)
   (:export #:version #:open #:close
            #:put #:puts #:get #:gets #:delete #:deletes
+           #:map-db
            #:destroy #:repair))

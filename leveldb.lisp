@@ -60,6 +60,17 @@
                  (aref ,gvector ,gi)))
          ,@forms))))
 
+(defun foreign-octets-to-lisp (ptr vallen &optional (free t))
+  (unless (null-pointer-p ptr)
+    (let* ((n (mem-ref vallen 'size-t))
+           (val (make-array n :element-type '(unsigned-byte 8))))
+      (dotimes (i n)
+        (setf (aref val i)
+              (mem-aref ptr :unsigned-char i)))
+      (when free
+        (leveldb-free ptr))
+      val)))
+
 (defun call-with-open-db (function name &key (if-does-not-exist :create))
   (let ((db (open name :if-does-not-exist if-does-not-exist)))
     (unwind-protect
@@ -135,14 +146,7 @@
                                 fkey (length key)
                                 vallen errptr)))
           (check-errptr errptr)
-          (unless (null-pointer-p ret)
-            (let* ((n (mem-ref vallen 'size-t))
-                   (val (make-array n :element-type '(unsigned-byte 8))))
-              (dotimes (i n)
-                (setf (aref val i)
-                      (mem-aref ret :unsigned-char i)))
-              (leveldb-free ret)
-              val)))))))
+          (foreign-octets-to-lisp ret vallen))))))
 
 (defun gets (db key)
   (octets-to-string (get db (string-to-octets key))))
@@ -161,13 +165,73 @@
       (leveldb-options-destroy options)
       (check-errptr errptr))))
 
+(defun call-with-iterator (function db &key (seek :first))
+  (let ((iter (leveldb-create-iterator (db-handle db) (db-read-options db))))
+    (seek iter seek)
+    (unwind-protect
+         (funcall function iter)
+      (leveldb-iter-destroy iter))))
+
+(defun seek (iter where)
+  (case where
+    (:first
+     (leveldb-iter-seek-to-first iter))
+    (:last
+     (leveldb-iter-seek-to-last iter))
+    (t
+     (with-octets-buffer (fkey where)
+       (leveldb-iter-seek iter fkey (length where))))))
+
+(defun valid-p (iter)
+  (leveldb-iter-valid iter))
+
+(defun next (iter)
+  (leveldb-iter-next iter))
+
+(defun prev (iter)
+  (leveldb-iter-prev iter))
+
+(defun key (iter)
+  (with-foreign-object (keylen 'size-t)
+    (foreign-octets-to-lisp (leveldb-iter-key iter keylen) keylen nil)))
+
+(defun value (iter)
+  (with-foreign-object (vallen 'size-t)
+    (foreign-octets-to-lisp (leveldb-iter-value iter vallen) vallen nil)))
+
+(defun pass-as-strings (function)
+  (lambda (&rest octet-vectors)
+    (apply function (mapcar #'octets-to-string octet-vectors))))
+
+(defun map-db (function db &key (direction :forward) (seek :first)
+                                (interest :both) (strings nil))
+  (when strings
+    (setf function (pass-as-strings function))
+    (when (stringp seek)
+      (setf seek (string-to-octets seek))))
+  (call-with-iterator (lambda (iter)
+                        (loop while (valid-p iter)
+                              do (ecase interest
+                                   (:keys
+                                    (funcall function (key iter)))
+                                   (:values
+                                    (funcall function (value iter)))
+                                   (:both
+                                    (funcall function (key iter) (value iter))))
+                                 (ecase direction
+                                   (:forward
+                                    (next iter))
+                                   (:backward
+                                    (prev iter)))))
+                      db
+                      :seek seek))
+
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
 ;;          create-if-missing error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files cache[lru] block-size block-restart-interval]
 ;; read-options [verify-checksums fill-cache snapshot]
 ;; write-options [sync]
 ;; write [batch: clear, put, delete, iterate]
-;; create-iterator [valid-p seek-to-first seek-to-last seek next prev key value get-error]
 ;; snapshot [create release]
 ;; property-value
 ;; approximate-sizes
