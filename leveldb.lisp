@@ -9,7 +9,10 @@
 
 (define-condition leveldb-error (error)
   ((message :initarg :message
-            :reader leveldb-error-message)))
+            :reader leveldb-error-message))
+  (:report (lambda (c s)
+             (format s "LevelDB error: ~S"
+                     (leveldb-error-message c)))))
 
 (defclass db ()
   ((open-options
