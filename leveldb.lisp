@@ -203,8 +203,8 @@
   (lambda (&rest octet-vectors)
     (apply function (mapcar #'octets-to-string octet-vectors))))
 
-(defun map-db (function db &key (direction :forward) (seek :first)
-                                (interest :both) (strings nil))
+(defun map (function db &key (direction :forward) (seek :first)
+                             (interest :both) (strings nil))
   (when strings
     (setf function (pass-as-strings function))
     (when (stringp seek)

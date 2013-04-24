@@ -7,8 +7,7 @@
 (defpackage #:leveldb
   (:use #:cl #:cffi)
   (:import-from #:babel #:string-to-octets #:octets-to-string)
-  (:shadow #:open #:close #:get #:delete)
+  (:shadow #:open #:close #:get #:delete #:map)
   (:export #:version #:open #:close
-           #:put #:puts #:get #:gets #:delete #:deletes
-           #:map-db
+           #:put #:puts #:get #:gets #:delete #:deletes #:map
            #:destroy #:repair))
