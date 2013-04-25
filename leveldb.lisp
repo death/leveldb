@@ -204,14 +204,18 @@
     (apply function (mapcar #'octets-to-string octet-vectors))))
 
 (defun map (function db &key (direction :forward) (seek :first)
-                             (interest :both) (strings nil))
+                             (interest :both) (strings nil)
+                             (limit nil))
   (when strings
     (setf function (pass-as-strings function))
     (when (stringp seek)
       (setf seek (string-to-octets seek))))
   (call-with-iterator (lambda (iter)
-                        (loop while (valid-p iter)
-                              do (ecase interest
+                        (loop for n from 0
+                              while (valid-p iter)
+                              do (when (and limit (= n limit))
+                                   (return))
+                                 (ecase interest
                                    (:keys
                                     (funcall function (key iter)))
                                    (:values
