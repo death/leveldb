@@ -163,7 +163,9 @@
           (foreign-octets-to-lisp ret vallen))))))
 
 (defun gets (db key)
-  (octets-to-string (get db (string-to-octets key))))
+  (let ((octets (get db (string-to-octets key))))
+    (when octets
+      (octets-to-string octets))))
 
 (defun destroy (name)
   (let ((options (leveldb-options-create)))
