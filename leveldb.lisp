@@ -244,12 +244,31 @@
                       db
                       :seek seek))
 
+(defun write (db batch)
+  (let ((wb (leveldb-writebatch-create)))
+    (unwind-protect
+         (progn
+           (dolist (action batch)
+             (ecase (first action)
+               (:put
+                (destructuring-bind (key value) (rest action)
+                  (with-octets-buffer (fkey key)
+                    (with-octets-buffer (fvalue value)
+                      (leveldb-writebatch-put wb fkey (length key) fvalue (length value))))))
+               (:delete
+                (destructuring-bind (key) (rest action)
+                  (with-octets-buffer (fkey key)
+                    (leveldb-writebatch-delete wb fkey (length key)))))))
+           (with-errptr (errptr)
+             (leveldb-write (db-handle db) (db-write-options db) wb errptr)
+             (check-errptr errptr)))
+      (leveldb-writebatch-destroy wb))))
+
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
 ;;          error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files block-size block-restart-interval]
 ;; read-options [verify-checksums fill-cache snapshot]
 ;; write-options [sync]
-;; write [batch: clear, put, delete, iterate]
 ;; snapshot [create release]
 ;; property-value
 ;; approximate-sizes
