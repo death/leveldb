@@ -24,6 +24,9 @@
    (read-options
     :initarg :read-options
     :accessor db-read-options)
+   (cache
+    :initarg :cache
+    :accessor db-cache)
    (handle
     :initarg :handle
     :accessor db-handle)
@@ -71,8 +74,8 @@
         (leveldb-free ptr))
       val)))
 
-(defun call-with-open-db (function name &key (if-does-not-exist :create))
-  (let ((db (open name :if-does-not-exist if-does-not-exist)))
+(defun call-with-open-db (function name &rest options)
+  (let ((db (apply #'open name options)))
     (unwind-protect
          (funcall function db)
       (close db))))
@@ -80,11 +83,16 @@
 (defmacro with-open-db ((var name &rest options) &body forms)
   `(call-with-open-db (lambda (,var) ,@forms) ,name ,@options))
 
-(defun open (name &key (if-does-not-exist :create))
+(defun open (name &key (if-does-not-exist :create)
+                       (lru-cache-capacity nil))
   (let ((open-options (leveldb-options-create))
         (write-options (leveldb-writeoptions-create))
-        (read-options (leveldb-readoptions-create)))
+        (read-options (leveldb-readoptions-create))
+        (cache nil))
     (leveldb-options-set-create-if-missing open-options (ecase if-does-not-exist (:error nil) (:create t)))
+    (when lru-cache-capacity
+      (setf cache (leveldb-cache-create-lru lru-cache-capacity))
+      (leveldb-options-set-cache open-options cache))
     (with-errptr (errptr)
       (let ((handle (leveldb-open open-options name errptr)))
         (cond ((and (not (null-pointer-p handle))
@@ -93,11 +101,14 @@
                               :open-options open-options
                               :write-options write-options
                               :read-options read-options
+                              :cache cache
                               :handle handle
                               :name name))
               (t (leveldb-readoptions-destroy read-options)
                  (leveldb-writeoptions-destroy write-options)
                  (leveldb-options-destroy open-options)
+                 (when cache
+                   (leveldb-cache-destroy cache))
                  (check-errptr errptr)
                  (error 'leveldb-error :message "null db handle without error?")))))))
 
@@ -108,6 +119,9 @@
       (leveldb-readoptions-destroy (db-read-options db))
       (leveldb-writeoptions-destroy (db-write-options db))
       (leveldb-options-destroy (db-open-options db))
+      (when (db-cache db)
+        (leveldb-cache-destroy (db-cache db))
+        (setf (db-cache db) nil))
       (setf (db-handle db) nil)
       (setf (db-read-options db) nil)
       (setf (db-write-options db) nil)
@@ -231,8 +245,8 @@
                       :seek seek))
 
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
-;;          create-if-missing error-if-exists paranoid-checks compression env[default] info-log
-;;          write-buffer-size max-open-files cache[lru] block-size block-restart-interval]
+;;          error-if-exists paranoid-checks compression env[default] info-log
+;;          write-buffer-size max-open-files block-size block-restart-interval]
 ;; read-options [verify-checksums fill-cache snapshot]
 ;; write-options [sync]
 ;; write [batch: clear, put, delete, iterate]
