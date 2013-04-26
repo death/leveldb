@@ -8,7 +8,7 @@
   (:use #:cl #:cffi)
   (:import-from #:babel #:string-to-octets #:octets-to-string)
   (:shadow #:open #:close #:get #:delete #:map #:write)
-  (:export #:version #:open #:close
+  (:export #:version #:open #:close #:with-open-db
            #:put #:puts #:get #:gets #:delete #:deletes #:write
            #:map
            #:destroy #:repair))
