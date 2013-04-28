@@ -52,6 +52,15 @@
         (error 'leveldb-error :message s)))))
 
 (defmacro with-octets-buffer ((var vector) &body forms)
+  #+sbcl
+  `(cffi:with-pointer-to-vector-data (,var ,vector)
+     ,@forms)
+  ;; Implementations like ACL/LW/CCL have special construction
+  ;; requirements for "shareable vectors" that can be passed to
+  ;; foreign code.  Since there's no predicate for distinguishing
+  ;; those and ordinary octet vectors, and since we want to allow for
+  ;; the latter, we just copy on those implementations.
+  #-sbcl
   (let ((gvector (gensym))
         (glen (gensym))
         (gi (gensym)))
