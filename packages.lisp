@@ -10,5 +10,5 @@
   (:shadow #:open #:close #:get #:delete #:map #:write)
   (:export #:version #:open #:close #:with-open-db
            #:put #:puts #:get #:gets #:delete #:deletes #:write
-           #:map
+           #:map #:property-value
            #:destroy #:repair))

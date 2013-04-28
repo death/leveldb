@@ -275,12 +275,17 @@
              (check-errptr errptr)))
       (leveldb-writebatch-destroy wb))))
 
+(defun property-value (db name)
+  (let ((value (leveldb-property-value (db-handle db) name)))
+    (unless (null-pointer-p value)
+      (prog1 (foreign-string-to-lisp value)
+        (leveldb-free value)))))
+
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
 ;;          error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files block-size block-restart-interval]
 ;; read-options [verify-checksums fill-cache snapshot]
 ;; write-options [sync]
 ;; snapshot [create release]
-;; property-value
 ;; approximate-sizes
 ;; compact-range
