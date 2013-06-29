@@ -8,6 +8,8 @@
 
 (asdf:defsystem #:leveldb
   :description "LevelDB Lisp bindings."
+  :author "death <github.com/death>"
+  :license "BSD"
   :depends-on (#:cffi)
   :serial t
   :components
