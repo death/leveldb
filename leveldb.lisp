@@ -190,7 +190,7 @@
       (leveldb-options-destroy options)
       (check-errptr errptr))))
 
-(defun call-with-iterator (function db &key (seek :first))
+(defun call-with-iterator (db function &key (seek :first))
   (let ((iter (leveldb-create-iterator (db-handle db) (db-read-options db))))
     (seek iter seek)
     (unwind-protect
@@ -228,14 +228,15 @@
   (lambda (&rest octet-vectors)
     (apply function (mapcar #'octets-to-string octet-vectors))))
 
-(defun map (function db &key (direction :forward) (seek :first)
+(defun map (db function &key (direction :forward) (seek :first)
                              (interest :both) (strings nil)
                              (limit nil))
   (when strings
     (setf function (pass-as-strings function))
     (when (stringp seek)
       (setf seek (string-to-octets seek))))
-  (call-with-iterator (lambda (iter)
+  (call-with-iterator db
+                      (lambda (iter)
                         (loop for n from 0
                               while (valid-p iter)
                               do (when (and limit (= n limit))
@@ -252,7 +253,6 @@
                                     (next iter))
                                    (:backward
                                     (prev iter)))))
-                      db
                       :seek seek))
 
 (defun write (db batch)
