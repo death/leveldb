@@ -1,0 +1,6 @@
+LevelDB bindings for Common Lisp.
+
+Prerequisites:
+  CFFI
+
+Patches welcome.
