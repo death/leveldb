@@ -10,7 +10,7 @@
   :description "LevelDB bindings for Common Lisp."
   :author "death <github.com/death>"
   :license "BSD"
-  :depends-on (#:cffi)
+  :depends-on (#:cffi #:babel)
   :serial t
   :components
   ((:file "packages")

@@ -2,5 +2,6 @@ LevelDB bindings for Common Lisp.
 
 Prerequisites:
   CFFI
+  Babel
 
 Patches welcome.
