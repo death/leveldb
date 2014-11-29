@@ -10,6 +10,7 @@
                 #:defctype #:defcfun #:defcenum #:with-foreign-object
                 #:mem-ref #:null-pointer-p #:foreign-string-to-lisp
                 #:null-pointer #:mem-aref)
+  (:import-from #:cffi-sys #:native-namestring)
   (:import-from #:babel #:string-to-octets #:octets-to-string)
   (:shadow #:open #:close #:get #:delete #:map #:write)
   (:export #:version #:open #:close #:with-open-db

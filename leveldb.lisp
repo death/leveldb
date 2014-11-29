@@ -97,7 +97,8 @@
   (let ((open-options (leveldb-options-create))
         (write-options (leveldb-writeoptions-create))
         (read-options (leveldb-readoptions-create))
-        (cache nil))
+        (cache nil)
+        (name (native-namestring name)))
     (leveldb-options-set-create-if-missing open-options (ecase if-does-not-exist (:error nil) (:create t)))
     (when lru-cache-capacity
       (setf cache (leveldb-cache-create-lru lru-cache-capacity))
@@ -177,14 +178,16 @@
       (octets-to-string octets))))
 
 (defun destroy (name)
-  (let ((options (leveldb-options-create)))
+  (let ((options (leveldb-options-create))
+        (name (native-namestring name)))
     (with-errptr (errptr)
       (leveldb-destroy-db options name errptr)
       (leveldb-options-destroy options)
       (check-errptr errptr))))
 
 (defun repair (name)
-  (let ((options (leveldb-options-create)))
+  (let ((options (leveldb-options-create))
+        (name (native-namestring name)))
     (with-errptr (errptr)
       (leveldb-repair-db options name errptr)
       (leveldb-options-destroy options)
