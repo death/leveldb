@@ -18,9 +18,6 @@
   ((open-options
     :initarg :open-options
     :accessor db-open-options)
-   (write-options
-    :initarg :write-options
-    :accessor db-write-options)
    (read-options
     :initarg :read-options
     :accessor db-read-options)
@@ -50,6 +47,14 @@
       (let ((s (foreign-string-to-lisp err)))
         (leveldb-free err)
         (error 'leveldb-error :message s)))))
+
+(defmacro with-write-options ((var &key sync) &body forms)
+  `(let ((,var (leveldb-writeoptions-create)))
+     (unwind-protect
+          (progn
+            (leveldb-writeoptions-set-sync ,var ,sync)
+            ,@forms)
+       (leveldb-writeoptions-destroy ,var))))
 
 (defmacro with-octets-buffer ((var vector) &body forms)
   #+sbcl
@@ -95,7 +100,6 @@
 (defun open (name &key (if-does-not-exist :create)
                        (lru-cache-capacity nil))
   (let ((open-options (leveldb-options-create))
-        (write-options (leveldb-writeoptions-create))
         (read-options (leveldb-readoptions-create))
         (cache nil)
         (name (native-namestring name)))
@@ -109,13 +113,11 @@
                     (null-pointer-p (mem-ref errptr :pointer)))
                (make-instance 'db
                               :open-options open-options
-                              :write-options write-options
                               :read-options read-options
                               :cache cache
                               :handle handle
                               :name name))
               (t (leveldb-readoptions-destroy read-options)
-                 (leveldb-writeoptions-destroy write-options)
                  (leveldb-options-destroy open-options)
                  (when cache
                    (leveldb-cache-destroy cache))
@@ -127,39 +129,39 @@
     (when handle
       (leveldb-close handle)
       (leveldb-readoptions-destroy (db-read-options db))
-      (leveldb-writeoptions-destroy (db-write-options db))
       (leveldb-options-destroy (db-open-options db))
       (when (db-cache db)
         (leveldb-cache-destroy (db-cache db))
         (setf (db-cache db) nil))
       (setf (db-handle db) nil)
       (setf (db-read-options db) nil)
-      (setf (db-write-options db) nil)
       (setf (db-open-options db) nil))))
 
-(defun put (db key val)
+(defun put (db key val &key sync)
   (with-octets-buffer (fkey key)
     (with-octets-buffer (fval val)
       (with-errptr (errptr)
-        (leveldb-put (db-handle db) (db-write-options db)
-                     fkey (length key)
-                     fval (length val)
-                     errptr)
-        (check-errptr errptr)))))
+        (with-write-options (options :sync sync)
+          (leveldb-put (db-handle db) options
+                       fkey (length key)
+                       fval (length val)
+                       errptr)
+          (check-errptr errptr))))))
 
-(defun puts (db key val)
-  (put db (string-to-octets key) (string-to-octets val)))
+(defun puts (db key val &key sync)
+  (put db (string-to-octets key) (string-to-octets val) :sync sync))
 
-(defun delete (db key)
+(defun delete (db key &key sync)
   (with-octets-buffer (fkey key)
     (with-errptr (errptr)
-      (leveldb-delete (db-handle db) (db-write-options db)
-                      fkey (length key)
-                      errptr)
-      (check-errptr errptr))))
+      (with-write-options (options :sync sync)
+        (leveldb-delete (db-handle db) options
+                        fkey (length key)
+                        errptr)
+        (check-errptr errptr)))))
 
-(defun deletes (db key)
-  (delete db (string-to-octets key)))
+(defun deletes (db key &key sync)
+  (delete db (string-to-octets key) :sync sync))
 
 (defun get (db key)
   (with-octets-buffer (fkey key)
@@ -258,7 +260,7 @@
                                     (prev iter)))))
                       :seek seek))
 
-(defun write (db batch)
+(defun write (db batch &key sync)
   (let ((wb (leveldb-writebatch-create)))
     (unwind-protect
          (progn
@@ -274,8 +276,9 @@
                   (with-octets-buffer (fkey key)
                     (leveldb-writebatch-delete wb fkey (length key)))))))
            (with-errptr (errptr)
-             (leveldb-write (db-handle db) (db-write-options db) wb errptr)
-             (check-errptr errptr)))
+             (with-write-options (options :sync sync)
+               (leveldb-write (db-handle db) options wb errptr)
+               (check-errptr errptr))))
       (leveldb-writebatch-destroy wb))))
 
 (defun property-value (db name)
@@ -288,7 +291,6 @@
 ;;          error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files block-size block-restart-interval]
 ;; read-options [verify-checksums fill-cache snapshot]
-;; write-options [sync]
 ;; snapshot [create release]
 ;; approximate-sizes
 ;; compact-range
