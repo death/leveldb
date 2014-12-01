@@ -10,9 +10,11 @@
   :description "LevelDB bindings for Common Lisp."
   :author "death <github.com/death>"
   :license "BSD"
+  :defsystem-depends-on (#:cffi-grovel)
   :depends-on (#:cffi #:babel #:trivial-garbage)
   :serial t
   :components
   ((:file "packages")
+   (cffi-grovel:grovel-file "grovel")
    (:file "low-level")
    (:file "leveldb")))

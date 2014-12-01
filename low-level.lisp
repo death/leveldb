@@ -13,7 +13,6 @@
 
 ;;; Other types
 
-(defctype size-t :unsigned-int)
 (defctype bool (:boolean :unsigned-char))
 
 ;;; DB operations
