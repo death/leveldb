@@ -18,9 +18,6 @@
   ((open-options
     :initarg :open-options
     :accessor db-open-options)
-   (read-options
-    :initarg :read-options
-    :accessor db-read-options)
    (cache
     :initarg :cache
     :accessor db-cache)
@@ -29,7 +26,10 @@
     :accessor db-handle)
    (name
     :initarg :name
-    :accessor db-name)))
+    :accessor db-name)
+   (snapshots
+    :initform (make-weak-hash-table :weakness :key)
+    :accessor db-snapshots)))
 
 (defmethod print-object ((db db) stream)
   (print-unreadable-object (db stream :type t)
@@ -55,6 +55,17 @@
             (leveldb-writeoptions-set-sync ,var ,sync)
             ,@forms)
        (leveldb-writeoptions-destroy ,var))))
+
+(defmacro with-read-options ((var &key verify-checksums fill-cache snapshot) &body forms)
+  `(let ((,var (leveldb-readoptions-create)))
+     (unwind-protect
+          (progn
+            (leveldb-readoptions-set-verify-checksums ,var ,verify-checksums)
+            (leveldb-readoptions-set-fill-cache ,var ,fill-cache)
+            (when ,snapshot
+              (leveldb-readoptions-set-snapshot ,var (snapshot-handle ,snapshot)))
+            ,@forms)
+       (leveldb-readoptions-destroy ,var))))
 
 (defmacro with-octets-buffer ((var vector) &body forms)
   #+sbcl
@@ -100,7 +111,6 @@
 (defun open (name &key (if-does-not-exist :create)
                        (lru-cache-capacity nil))
   (let ((open-options (leveldb-options-create))
-        (read-options (leveldb-readoptions-create))
         (cache nil)
         (name (native-namestring name)))
     (leveldb-options-set-create-if-missing open-options (ecase if-does-not-exist (:error nil) (:create t)))
@@ -113,28 +123,30 @@
                     (null-pointer-p (mem-ref errptr :pointer)))
                (make-instance 'db
                               :open-options open-options
-                              :read-options read-options
                               :cache cache
                               :handle handle
                               :name name))
-              (t (leveldb-readoptions-destroy read-options)
-                 (leveldb-options-destroy open-options)
+              (t (leveldb-options-destroy open-options)
                  (when cache
                    (leveldb-cache-destroy cache))
                  (check-errptr errptr)
                  (error 'leveldb-error :message "null db handle without error?")))))))
 
 (defun close (db)
-  (let ((handle (db-handle db)))
+  (let ((handle (db-handle db))
+        (snapshots (db-snapshots db)))
     (when handle
+      (maphash (lambda (snapshot-handle whatever)
+                 (declare (ignore whatever))
+                 (remhash snapshot-handle snapshots)
+                 (leveldb-release-snapshot handle snapshot-handle))
+               snapshots)
       (leveldb-close handle)
-      (leveldb-readoptions-destroy (db-read-options db))
       (leveldb-options-destroy (db-open-options db))
       (when (db-cache db)
         (leveldb-cache-destroy (db-cache db))
         (setf (db-cache db) nil))
       (setf (db-handle db) nil)
-      (setf (db-read-options db) nil)
       (setf (db-open-options db) nil))))
 
 (defun put (db key val &key sync)
@@ -163,19 +175,25 @@
 (defun deletes (db key &key sync)
   (delete db (string-to-octets key) :sync sync))
 
-(defun get (db key)
+(defun get (db key &key verify-checksums (fill-cache t) snapshot)
   (with-octets-buffer (fkey key)
     (with-errptr (errptr)
       (with-foreign-object (vallen 'size-t)
         (setf (mem-ref vallen 'size-t) 0)
-        (let ((ret (leveldb-get (db-handle db) (db-read-options db)
-                                fkey (length key)
-                                vallen errptr)))
-          (check-errptr errptr)
-          (foreign-octets-to-lisp ret vallen))))))
+        (with-read-options (options :verify-checksums verify-checksums
+                                    :fill-cache fill-cache
+                                    :snapshot snapshot)
+          (let ((ret (leveldb-get (db-handle db) options
+                                  fkey (length key)
+                                  vallen errptr)))
+            (check-errptr errptr)
+            (foreign-octets-to-lisp ret vallen)))))))
 
-(defun gets (db key)
-  (let ((octets (get db (string-to-octets key))))
+(defun gets (db key &key verify-checksums (fill-cache t) snapshot)
+  (let ((octets (get db (string-to-octets key)
+                     :verify-checksums verify-checksums
+                     :fill-cache fill-cache
+                     :snapshot snapshot)))
     (when octets
       (octets-to-string octets))))
 
@@ -195,12 +213,15 @@
       (leveldb-options-destroy options)
       (check-errptr errptr))))
 
-(defun call-with-iterator (db function &key (seek :first))
-  (let ((iter (leveldb-create-iterator (db-handle db) (db-read-options db))))
-    (seek iter seek)
-    (unwind-protect
-         (funcall function iter)
-      (leveldb-iter-destroy iter))))
+(defun call-with-iterator (db function &key (seek :first) verify-checksums (fill-cache t) snapshot)
+  (with-read-options (options :verify-checksums verify-checksums
+                              :fill-cache fill-cache
+                              :snapshot snapshot)
+    (let ((iter (leveldb-create-iterator (db-handle db) options)))
+      (seek iter seek)
+      (unwind-protect
+           (funcall function iter)
+        (leveldb-iter-destroy iter)))))
 
 (defun seek (iter where)
   (case where
@@ -235,7 +256,8 @@
 
 (defun map (db function &key (direction :forward) (seek :first)
                              (interest :both) (strings nil)
-                             (limit nil))
+                             (limit nil)
+                             verify-checksums (fill-cache t) snapshot)
   (when strings
     (setf function (pass-as-strings function))
     (when (stringp seek)
@@ -258,7 +280,10 @@
                                     (next iter))
                                    (:backward
                                     (prev iter)))))
-                      :seek seek))
+                      :seek seek
+                      :verify-checksums verify-checksums
+                      :fill-cache fill-cache
+                      :snapshot snapshot))
 
 (defun write (db batch &key sync)
   (let ((wb (leveldb-writebatch-create)))
@@ -287,10 +312,21 @@
       (prog1 (foreign-string-to-lisp value)
         (leveldb-free value)))))
 
+(defclass snapshot ()
+  ((handle :initarg :handle :reader snapshot-handle)))
+
+(defun snapshot (db)
+  (let ((handle (leveldb-create-snapshot (db-handle db)))
+        (snapshots (db-snapshots db)))
+    (setf (gethash handle snapshots) t)
+    (finalize (make-instance 'snapshot :handle handle)
+              (lambda ()
+                (when (gethash handle snapshots)
+                  (remhash handle snapshots)
+                  (leveldb-release-snapshot (db-handle db) handle))))))
+
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
 ;;          error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files block-size block-restart-interval]
-;; read-options [verify-checksums fill-cache snapshot]
-;; snapshot [create release]
 ;; approximate-sizes
 ;; compact-range

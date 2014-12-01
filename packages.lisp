@@ -12,8 +12,9 @@
                 #:null-pointer #:mem-aref)
   (:import-from #:cffi-sys #:native-namestring)
   (:import-from #:babel #:string-to-octets #:octets-to-string)
+  (:import-from #:trivial-garbage #:make-weak-hash-table #:finalize)
   (:shadow #:open #:close #:get #:delete #:map #:write)
   (:export #:version #:open #:close #:with-open-db
            #:put #:puts #:get #:gets #:delete #:deletes #:write
-           #:map #:property-value
+           #:map #:property-value #:snapshot
            #:destroy #:repair))
