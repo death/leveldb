@@ -325,8 +325,34 @@
                   (remhash handle snapshots)
                   (leveldb-release-snapshot (db-handle db) handle))))))
 
+(defun approximate-sizes (db ranges)
+  ;; Works only with strings, for now...
+  (let ((num-ranges (length ranges)))
+    (with-foreign-objects ((range-start-key :pointer num-ranges)
+                           (range-limit-key :pointer num-ranges)
+                           (range-start-key-len 'size-t num-ranges)
+                           (range-limit-key-len 'size-t num-ranges)
+                           (sizes :uint64 num-ranges))
+      (loop for i from 0
+            for (start-key limit-key) in ranges
+            do (multiple-value-bind (fstart-key fstart-key-len)
+                   (foreign-string-alloc start-key)
+                 (multiple-value-bind (flimit-key flimit-key-len)
+                     (foreign-string-alloc limit-key)
+                   (setf (mem-aref range-start-key :pointer i) fstart-key)
+                   (setf (mem-aref range-start-key-len 'size-t i) fstart-key-len)
+                   (setf (mem-aref range-limit-key :pointer i) flimit-key)
+                   (setf (mem-aref range-limit-key-len 'size-t i) flimit-key-len))))
+      (leveldb-approximate-sizes (db-handle db) num-ranges
+                                 range-start-key range-start-key-len
+                                 range-limit-key range-limit-key-len
+                                 sizes)
+      (loop for i from 0 below num-ranges
+            do (foreign-string-free (mem-aref range-limit-key :pointer i))
+            do (foreign-string-free (mem-aref range-start-key :pointer i))
+            collect (mem-aref sizes :uint64 i)))))
+
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
 ;;          error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files block-size block-restart-interval]
-;; approximate-sizes
 ;; compact-range
