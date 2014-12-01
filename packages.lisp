@@ -18,4 +18,5 @@
   (:export #:version #:open #:close #:with-open-db
            #:put #:puts #:get #:gets #:delete #:deletes #:write
            #:map #:property-value #:snapshot #:approximate-sizes
+           #:compact-range
            #:destroy #:repair))

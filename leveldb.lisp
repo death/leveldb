@@ -352,7 +352,17 @@
             do (foreign-string-free (mem-aref range-start-key :pointer i))
             collect (mem-aref sizes :uint64 i)))))
 
+(defun compact-range (db start-key limit-key)
+  (when (stringp start-key)
+    (setf start-key (string-to-octets start-key)))
+  (when (stringp limit-key)
+    (setf limit-key (string-to-octets limit-key)))
+  (with-octets-buffer (fstart-key start-key)
+    (with-octets-buffer (flimit-key limit-key)
+      (leveldb-compact-range (db-handle db)
+                             fstart-key (length start-key)
+                             flimit-key (length limit-key)))))
+
 ;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
 ;;          error-if-exists paranoid-checks compression env[default] info-log
 ;;          write-buffer-size max-open-files block-size block-restart-interval]
-;; compact-range
