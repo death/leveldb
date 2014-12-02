@@ -109,14 +109,34 @@
   `(call-with-open-db (lambda (,var) ,@forms) ,name ,@options))
 
 (defun open (name &key (if-does-not-exist :create)
-                       (lru-cache-capacity nil))
+                       (if-exists :open)
+                       (lru-cache-capacity nil)
+                       compression
+                       (paranoid-checks nil paranoid-checks-supplied)
+                       write-buffer-size
+                       max-open-files
+                       block-size
+                       block-restart-interval)
   (let ((open-options (leveldb-options-create))
         (cache nil)
         (name (native-namestring name)))
     (leveldb-options-set-create-if-missing open-options (ecase if-does-not-exist (:error nil) (:create t)))
+    (leveldb-options-set-error-if-exists open-options (ecase if-exists (:open nil) (:error t)))
     (when lru-cache-capacity
       (setf cache (leveldb-cache-create-lru lru-cache-capacity))
       (leveldb-options-set-cache open-options cache))
+    (when compression
+      (leveldb-options-set-compression open-options compression))
+    (when paranoid-checks-supplied
+      (leveldb-options-set-paranoid-checks open-options paranoid-checks))
+    (when write-buffer-size
+      (leveldb-options-set-write-buffer-size open-options write-buffer-size))
+    (when max-open-files
+      (leveldb-options-set-max-open-files open-options max-open-files))
+    (when block-size
+      (leveldb-options-set-block-size open-options block-size))
+    (when block-restart-interval
+      (leveldb-options-set-block-restart-interval open-options block-restart-interval))
     (with-errptr (errptr)
       (let ((handle (leveldb-open open-options name errptr)))
         (cond ((and (not (null-pointer-p handle))
@@ -363,6 +383,14 @@
                              fstart-key (length start-key)
                              flimit-key (length limit-key)))))
 
-;; options [comparator[compare name] filter-policy[create keymatch name, bloom]
-;;          error-if-exists paranoid-checks compression env[default] info-log
-;;          write-buffer-size max-open-files block-size block-restart-interval]
+;; options [comparator[compare name] filter-policy[create keymatch name, bloom]]
+;;
+;; Looks like these options (with the exception of the Bloom filter)
+;; cannot work at the moment (on SBCL) because LevelDB calls the Lisp
+;; callback from a non-Lisp thread, and I'm getting signal 11 thrown
+;; at me.  Similar issue and explanation:
+;;
+;; http://sourceforge.net/p/sbcl/mailman/message/24288866/
+;;
+;; Too bad there's no explanation on how to set up this "virtual"
+;; thread.
