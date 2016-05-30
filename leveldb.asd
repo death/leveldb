@@ -15,6 +15,6 @@
   :serial t
   :components
   ((:file "packages")
-   (cffi-grovel:grovel-file "grovel")
+   (:cffi-grovel-file "grovel")
    (:file "low-level")
    (:file "leveldb")))
